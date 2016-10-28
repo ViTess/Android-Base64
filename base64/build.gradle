@@ -21,7 +21,6 @@ android {
                 cppFlags "-std=c++11"
             }
         }
-
     }
     buildTypes {
         release {
