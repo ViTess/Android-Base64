@@ -2,6 +2,7 @@
 // Created by trs on 16-10-24.
 //
 #include <Base64.h>
+#include "Base64.h"
 
 /**
  * 判断是否为空
@@ -16,11 +17,94 @@ bool isByteArrayNull(JNIEnv *env, jbyteArray byteArray) {
 }
 
 /**
- * 编码
- * data   : byte数组
- * length : 数组长度
+ * 判断参数是否异常
  */
-EncodeData *encode(const char *data, int length) {
+bool isOutOfRange(JNIEnv *env, int realLength, int offset, int length) {
+    if (offset < 0) {
+        jclass lae = env->FindClass("java/lang/IllegalArgumentException");
+        env->ThrowNew(lae, "offset was a minus!");
+        return true;
+    }
+    if (length < 0 && LEN_DEFAULT != length) {
+        jclass lae = env->FindClass("java/lang/IllegalArgumentException");
+        env->ThrowNew(lae, "length was a minus!");
+        return true;
+    }
+    if (length > realLength) {
+        jclass lae = env->FindClass("java/lang/IllegalArgumentException");
+        env->ThrowNew(lae, "array length is less than length!");
+        return true;
+    }
+    if (offset > realLength) {
+        jclass lae = env->FindClass("java/lang/IllegalArgumentException");
+        env->ThrowNew(lae, "offset is less than array length!");
+        return true;
+    }
+    if (offset > length && LEN_DEFAULT != length) {
+        jclass lae = env->FindClass("java/lang/IllegalArgumentException");
+        env->ThrowNew(lae, "length is less than offset!");
+        return true;
+    }
+    return false;
+}
+
+/**
+ * 计算、获取编码长度
+ */
+int getEncodeLength(int realLength, int length, Flags *flags) {
+    //编码后的长度计算：3×8=4×6->4×8
+
+    int tempLength = realLength;
+    if (length != LEN_DEFAULT)
+        tempLength = length;
+
+    int encodeLength = 0;
+    if (realLength > 0) {
+        int remainder = tempLength % 3;
+
+        encodeLength = (remainder == 0 ? ((tempLength / 3) << 2) : (((tempLength / 3) + 1) << 2));
+        if (flags->isWrap) {
+            if (!flags->isCRLF) //编码后每76个字符插入'\n'换行
+                encodeLength = encodeLength + 1 + encodeLength / LINE_CHARS;
+            else //编码后每76个字符插入'\r\n'换行
+                encodeLength = encodeLength + (1 + encodeLength / LINE_CHARS) * 2;
+        }
+        //没有padding，不需要在后面补'='
+        if (!flags->isPadding && remainder > 0)
+            encodeLength -= (3 - remainder);
+    }
+
+    return encodeLength;
+}
+
+/**
+ * 获取选项值
+ */
+Flags *getFlags(int flag) {
+    Flags *flags = (Flags *) malloc(sizeof(Flags));
+    flags->isPadding = !(flag & NO_PADDING);
+    flags->isWrap = !(flag & NO_WRAP);
+    flags->isCRLF = (flag & CRLF);
+    flags->isUrlSafe = !(flag & URL_SAFE);
+
+//    char log[256];
+//    sprintf(log, "flag:%d", flag);
+//    LOGV(log);
+//    sprintf(log, "padding:%d , wrap:%d , crlf:%d , safe:%d", flags->isPadding, flags->isWrap, flags->isCRLF, flags->isUrlSafe);
+//    LOGV(log);
+
+    return flags;
+}
+
+/**
+ * 编码
+ * data       : byte数组
+ * realLength : 数组长度
+ * offset     : 偏移量
+ * length     : 从偏移量开始截取的长度
+ * flag       : 选项
+ */
+EncodeData *encode(const char *data, int realLength, int offset, int length, int flag) {
     /* 将字符串数据转换成ascii码，再将ascii码变成二进制表示，
      * 将二进制中每3个8位的数据转换成4个6位的数据，
      * 并且在6位的数据前加‘00’，最终变成4个8位，
@@ -41,25 +125,25 @@ EncodeData *encode(const char *data, int length) {
      * */
 
     EncodeData *encodeData = (EncodeData *) malloc(sizeof(EncodeData));
+    Flags *flags = getFlags(flag);//根据选项值获取对应选项
     char *result;//输出结果用指针
     char *p;//活动指针，用于循环取数据
     char temp1, temp2, temp3;//辅助取数
-    //编码后的长度计算：3×8=4×6->4×8
-    int encodeLength = 0;
-    if (length > 0) {
-        encodeLength = (length % 3 == 0 ? ((length / 3) << 2) : (((length / 3) + 1) << 2));
-        //编码后每76个字符插入'\n'换行
-        encodeLength = encodeLength + 1 + encodeLength / LINE_CHARS;
-    }
-    encodeData->length = encodeLength;
+
+    int encodeLength = getEncodeLength(realLength, length, flags);
 
     result = p = (char *) malloc(encodeLength * sizeof(char));
     int i;
     int count = LINE_GROUPS;
-    for (i = 0; i < length; i += 3) {
 
-        bool isSecondCharEmpty = (i + 1 >= length);
-        bool isThirdCharEmpty = (i + 2 >= length);
+    int len = realLength;
+    if (length != LEN_DEFAULT)
+        len = length;
+
+    for (i = offset; i < len; i += 3) {
+
+        bool isSecondCharEmpty = (i + 1 >= (len + offset));
+        bool isThirdCharEmpty = (i + 2 >= (len + offset));
 
         //每次增长3个，若能进入循环，第一个字节肯定存在
         temp1 = data[i];
@@ -73,47 +157,69 @@ EncodeData *encode(const char *data, int length) {
         //第三个转码取第二个字节的5、6、7、8位(0x3C)和第三个字节的前2位(0x03)
         //假设只有一个字节，那么必定可以转换出第一、二个转码，所以只需要判断第二个字节是否为空
         //若第二字节为空，则用‘=’（64）号代替
-        *(p++) = ENCODE_TABLE[isSecondCharEmpty ? 64 : (((temp2 << 2) & 0x3C) + ((temp3 >> 6) & 0x03))];
+        if (isSecondCharEmpty && flags->isPadding)
+            *(p++) = ENCODE_TABLE[64];
+        else if (!isSecondCharEmpty)
+            *(p++) = ENCODE_TABLE[(((temp2 << 2) & 0x3C) + ((temp3 >> 6) & 0x03))];
         //第四个转码直接取第三个字节的后6位即可
-        *(p++) = ENCODE_TABLE[isThirdCharEmpty ? 64 : (temp3 & 0x3F)];
-        if ((--count) == 0) {
+        if (isThirdCharEmpty && flags->isPadding)
+            *(p++) = ENCODE_TABLE[64];
+        else if (!isThirdCharEmpty)
+            *(p++) = ENCODE_TABLE[(temp3 & 0x3F)];
+
+        if (flags->isWrap && (--count) == 0) {
+            if (flags->isCRLF) *(p++) = '\r';
             *(p++) = '\n';
             count = LINE_GROUPS;
         }
     }
-    *p = '\n';//最后要加结束符号
+    if (flags->isWrap) {
+        if (flags->isCRLF) *(p++) = '\r';
+        *p = '\n';//最后要加结束符号
+    }
 
     encodeData->data = result;
+    encodeData->length = encodeLength;
     return encodeData;
 }
 
-JNIEXPORT jbyteArray JNICALL Java_vite_base64_Base64_encode(JNIEnv *env, jclass clazz, jbyteArray byteArray) {
+JNIEXPORT jbyteArray JNICALL Java_vite_base64_Base64_nativeEncode
+        (JNIEnv *env, jclass clazz, jbyteArray byteArray, jint offset, jint length, jint flag) {
     if (isByteArrayNull(env, byteArray))
         return NULL;
     jbyte *data = env->GetByteArrayElements(byteArray, JNI_FALSE);
-    jint len = env->GetArrayLength(byteArray);
-    EncodeData *encodeData = encode((char *) data, len);
-    len = encodeData->length;
+    jint realLen = env->GetArrayLength(byteArray);
+    if (isOutOfRange(env, realLen, offset, length)) {
+        return NULL;
+    }
+
+    EncodeData *encodeData = encode((char *) data, realLen, offset, length, flag);
+    realLen = encodeData->length;
 
     env->ReleaseByteArrayElements(byteArray, data, 0);
 
-    jbyteArray result = env->NewByteArray(len);
-    env->SetByteArrayRegion(result, 0, len, (const jbyte *) encodeData->data);
+    jbyteArray result = env->NewByteArray(realLen);
+    env->SetByteArrayRegion(result, 0, realLen, (const jbyte *) encodeData->data);
     return result;
 }
 
-JNIEXPORT jstring JNICALL Java_vite_base64_Base64_encode2String(JNIEnv *env, jclass clazz, jbyteArray byteArray) {
+JNIEXPORT jstring JNICALL Java_vite_base64_Base64_nativeEncode2String
+        (JNIEnv *env, jclass clazz, jbyteArray byteArray, jint offset, jint length, jint flag) {
     if (isByteArrayNull(env, byteArray))
         return NULL;
     jbyte *data = env->GetByteArrayElements(byteArray, JNI_FALSE);
-    jint len = env->GetArrayLength(byteArray);
-    EncodeData *encodeData = encode((char *) data, len);
-    len = encodeData->length;
+    jint realLen = env->GetArrayLength(byteArray);
+    if (isOutOfRange(env, realLen, offset, length)) {
+        return NULL;
+    }
+
+    EncodeData *encodeData = encode((char *) data, realLen, offset, length, flag);
+    realLen = encodeData->length;
 
     env->ReleaseByteArrayElements(byteArray, data, 0);
 
-    jbyteArray result = env->NewByteArray(len);
-    env->SetByteArrayRegion(result, 0, len, (const jbyte *) encodeData->data);
+    jbyteArray result = env->NewByteArray(realLen);
+    env->SetByteArrayRegion(result, 0, realLen, (const jbyte *) encodeData->data);
 
     jclass strClass = env->FindClass("java/lang/String");
     jmethodID strInitId = env->GetMethodID(strClass, "<init>", "([BLjava/lang/String;)V");

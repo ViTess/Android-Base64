@@ -12,6 +12,18 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#undef DEFAULT
+#define DEFAULT 0L
+#undef NO_PADDING
+#define NO_PADDING 1L
+#undef NO_WRAP
+#define NO_WRAP 2L
+#undef CRLF
+#define CRLF 4L
+#undef URL_SAFE
+#define URL_SAFE 8L
+#undef LEN_DEFAULT
+#define LEN_DEFAULT -2147483648L
 
 #define LOG_TAG "vite.Base64"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO ,LOG_TAG,__VA_ARGS__)
@@ -27,6 +39,13 @@ typedef struct {
     char *data;
 } EncodeData;
 
+typedef struct {
+    bool isPadding = true;
+    bool isWrap = true;
+    bool isCRLF = false;
+    bool isUrlSafe = false;
+} Flags;
+
 /*编码表*/
 static char ENCODE_TABLE[] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
                               'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
@@ -35,19 +54,19 @@ static char ENCODE_TABLE[] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 
 
 /*
  * Class:     vite_base64_Base64
- * Method:    encode
- * Signature: ([B)[B
+ * Method:    nativeEncode
+ * Signature: ([BIII)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_vite_base64_Base64_encode
-        (JNIEnv *, jclass, jbyteArray);
+JNIEXPORT jbyteArray JNICALL Java_vite_base64_Base64_nativeEncode
+        (JNIEnv *, jclass, jbyteArray, jint, jint, jint);
 
 /*
  * Class:     vite_base64_Base64
- * Method:    encode2String
- * Signature: ([B)Ljava/lang/String;
+ * Method:    nativeEncode2String
+ * Signature: ([BIII)Ljava/lang/String;
  */
-JNIEXPORT jstring JNICALL Java_vite_base64_Base64_encode2String
-        (JNIEnv *, jclass, jbyteArray);
+JNIEXPORT jstring JNICALL Java_vite_base64_Base64_nativeEncode2String
+        (JNIEnv *, jclass, jbyteArray, jint, jint, jint);
 
 #ifdef __cplusplus
 }
