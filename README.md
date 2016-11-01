@@ -15,7 +15,7 @@ flag| mean
 DEFAULT    | 默认标准编码(每76字符换行/结尾添加=号)
 NO_PADDING | 结尾字符不够时也不添加=号
 NO_WRAP    | 除结尾外去掉所有换行符
-CRLF       | 设置换行符风格为CRLF(/r/n)
+CRLF       | 设置换行符风格为CRLF(\r\n)
 URL_SAFE   | 未完成
 
 16.10.28
