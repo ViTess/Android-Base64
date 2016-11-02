@@ -27,7 +27,7 @@ import vite.base64.Base64;
 public class Base64EncodeTest {
 
     @Rule
-    public final ExpectedException npeThrown = ExpectedException.none();
+    public final ExpectedException thrown = ExpectedException.none();
 
     private final ArrayMap<String, String> EncodeResult = new ArrayMap<>();
 
@@ -215,11 +215,38 @@ public class Base64EncodeTest {
     public void testEmptyEncode() {
         Assert.assertArrayEquals(Base64.encode(new byte[0]), android.util.Base64.encode(new byte[0], 0));
         Assert.assertArrayEquals(Base64.encode(new byte[9999]), android.util.Base64.encode(new byte[9999], 0));
-        npeThrown.expect(NullPointerException.class);
+        thrown.expect(NullPointerException.class);
         Base64.encode(null);
 
-        npeThrown.expect(NullPointerException.class);
+        thrown.expect(NullPointerException.class);
         Base64.encode2String(null);
+    }
+
+    @Test
+    public void testOutOfRange() {
+        Random random = new Random();
+        byte[] data = new byte[50];
+        random.nextBytes(data);
+
+        thrown.expect(IllegalArgumentException.class);
+        thrown.expectMessage("offset was a minus!");
+        Base64.encode(data, -1, 50, Base64.DEFAULT);
+
+        thrown.expect(IllegalArgumentException.class);
+        thrown.expectMessage("length was a minus!");
+        Base64.encode(data, 0, -1, Base64.DEFAULT);
+
+        thrown.expect(IllegalArgumentException.class);
+        thrown.expectMessage("array length is less than length!");
+        Base64.encode(data, 0, 51, Base64.DEFAULT);
+
+        thrown.expect(IllegalArgumentException.class);
+        thrown.expectMessage("offset is more than array length!");
+        Base64.encode(data, 51, 50, Base64.DEFAULT);
+
+        thrown.expect(IllegalArgumentException.class);
+        thrown.expectMessage("offset and length is more than array length!");
+        Base64.encode(data, 40, 20, Base64.DEFAULT);
     }
 
     @Test

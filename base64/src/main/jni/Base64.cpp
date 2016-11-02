@@ -1,7 +1,6 @@
 //
 // Created by trs on 16-10-24.
 //
-#include <Base64.h>
 #include "Base64.h"
 
 /**
@@ -37,12 +36,12 @@ bool isOutOfRange(JNIEnv *env, int realLength, int offset, int length) {
     }
     if (offset > realLength) {
         jclass lae = env->FindClass("java/lang/IllegalArgumentException");
-        env->ThrowNew(lae, "offset is less than array length!");
+        env->ThrowNew(lae, "offset is more than array length!");
         return true;
     }
-    if (offset > length && LEN_DEFAULT != length) {
+    if ((offset + length) > realLength && LEN_DEFAULT != length) {
         jclass lae = env->FindClass("java/lang/IllegalArgumentException");
-        env->ThrowNew(lae, "length is less than offset!");
+        env->ThrowNew(lae, "offset and length is more than array length!");
         return true;
     }
     return false;
