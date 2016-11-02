@@ -84,7 +84,7 @@ Flags *getFlags(int flag) {
     flags->isPadding = !(flag & NO_PADDING);
     flags->isWrap = !(flag & NO_WRAP);
     flags->isCRLF = (flag & CRLF);
-    flags->isUrlSafe = !(flag & URL_SAFE);
+    flags->isUrlSafe = (flag & URL_SAFE);
 
 //    char log[256];
 //    sprintf(log, "flag:%d", flag);
@@ -125,6 +125,7 @@ EncodeData *encode(const char *data, int realLength, int offset, int length, int
 
     EncodeData *encodeData = (EncodeData *) malloc(sizeof(EncodeData));
     Flags *flags = getFlags(flag);//根据选项值获取对应选项
+    const char *table = flags->isUrlSafe ? ENCODE_WEB_TABLE : ENCODE_TABLE;
     char *result;//输出结果用指针
     char *p;//活动指针，用于循环取数据
     char temp1, temp2, temp3;//辅助取数
@@ -150,21 +151,21 @@ EncodeData *encode(const char *data, int realLength, int offset, int length, int
         temp3 = isThirdCharEmpty ? 0 : data[i + 2];
 
         //第一个转码取第一个字节的前6位，再通过0x3F(0011 1111)提取出
-        *(p++) = ENCODE_TABLE[(temp1 >> 2) & 0x3F];
+        *(p++) = table[(temp1 >> 2) & 0x3F];
         //第二个转码取第一个字节的7、8位(0x3F)和第二个字节的前4位(0x0F)
-        *(p++) = ENCODE_TABLE[((temp1 << 4) & 0x3F) + ((temp2 >> 4) & 0x0F)];
+        *(p++) = table[((temp1 << 4) & 0x3F) + ((temp2 >> 4) & 0x0F)];
         //第三个转码取第二个字节的5、6、7、8位(0x3C)和第三个字节的前2位(0x03)
         //假设只有一个字节，那么必定可以转换出第一、二个转码，所以只需要判断第二个字节是否为空
         //若第二字节为空，则用‘=’（64）号代替
         if (isSecondCharEmpty && flags->isPadding)
-            *(p++) = ENCODE_TABLE[64];
+            *(p++) = table[64];
         else if (!isSecondCharEmpty)
-            *(p++) = ENCODE_TABLE[(((temp2 << 2) & 0x3C) + ((temp3 >> 6) & 0x03))];
+            *(p++) = table[(((temp2 << 2) & 0x3C) + ((temp3 >> 6) & 0x03))];
         //第四个转码直接取第三个字节的后6位即可
         if (isThirdCharEmpty && flags->isPadding)
-            *(p++) = ENCODE_TABLE[64];
+            *(p++) = table[64];
         else if (!isThirdCharEmpty)
-            *(p++) = ENCODE_TABLE[(temp3 & 0x3F)];
+            *(p++) = table[(temp3 & 0x3F)];
 
         if (flags->isWrap && (--count) == 0) {
             if (flags->isCRLF) *(p++) = '\r';

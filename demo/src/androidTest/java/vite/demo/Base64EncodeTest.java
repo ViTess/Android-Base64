@@ -90,14 +90,19 @@ public class Base64EncodeTest {
             Assert.assertEquals(Base64.encode2String(key.getBytes(), Base64.CRLF),
                     android.util.Base64.encodeToString(key.getBytes(), android.util.Base64.CRLF));
 
-            Assert.assertArrayEquals(Base64.encode(key.getBytes(), Base64.NO_PADDING & Base64.NO_WRAP & Base64.CRLF)
-                    , android.util.Base64.encode(key.getBytes(), android.util.Base64.NO_PADDING & android.util.Base64.NO_WRAP & android.util.Base64
-                            .CRLF));
+            Assert.assertArrayEquals(Base64.encode(key.getBytes(), Base64.URL_SAFE)
+                    , android.util.Base64.encode(key.getBytes(), android.util.Base64.URL_SAFE));
 
-            Assert.assertEquals(Base64.encode2String(key.getBytes(), Base64.NO_PADDING & Base64.NO_WRAP & Base64.CRLF),
+            Assert.assertEquals(Base64.encode2String(key.getBytes(), Base64.URL_SAFE),
+                    android.util.Base64.encodeToString(key.getBytes(), android.util.Base64.URL_SAFE));
+
+            Assert.assertArrayEquals(Base64.encode(key.getBytes(), Base64.NO_PADDING & Base64.NO_WRAP & Base64.CRLF & Base64.URL_SAFE)
+                    , android.util.Base64.encode(key.getBytes(), android.util.Base64.NO_PADDING & android.util.Base64.NO_WRAP & android.util.Base64
+                            .CRLF & android.util.Base64.URL_SAFE));
+
+            Assert.assertEquals(Base64.encode2String(key.getBytes(), Base64.NO_PADDING & Base64.NO_WRAP & Base64.CRLF & Base64.URL_SAFE),
                     android.util.Base64.encodeToString(key.getBytes(), android.util.Base64.NO_PADDING & android.util.Base64.NO_WRAP & android.util
-                            .Base64
-                            .CRLF));
+                            .Base64.CRLF & android.util.Base64.URL_SAFE));
         }
     }
 
@@ -112,7 +117,9 @@ public class Base64EncodeTest {
                 while (count >= 0) {
                     random.nextBytes(data);
 
-                    Assert.assertArrayEquals(Base64.encode(data), android.util.Base64.encode(data, 0));
+//                    Assert.assertArrayEquals(Base64.encode(data), android.util.Base64.encode(data, 0));
+                    Assert.assertEquals(Base64.encode2String(data),
+                            android.util.Base64.encodeToString(data, 0));
 
                     count--;
                 }
