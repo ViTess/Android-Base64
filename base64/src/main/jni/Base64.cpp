@@ -77,6 +77,97 @@ int getEncodeLength(int realLength, int length, Flags *flags) {
 }
 
 /**
+ * 计算解码后的数据长度
+ */
+int getDecodeLength(JNIEnv *env, const char *data, int realLength, int offset, int length, Flags *flags) {
+    int decodeLength = 0;
+    int tempLength = realLength;
+    if (length != LEN_DEFAULT)
+        tempLength = length;
+
+    //当数据应该有'='存在时，数据长度少于4，则无法被解码
+    //反之，不应该存在'='时，数据长度少于2，则同上
+    if (flags->isPadding && tempLength < 4) {
+        jclass lae = env->FindClass("java/lang/IllegalArgumentException");
+        env->ThrowNew(lae, "Data length less than 4, can't be decoded!");
+        return 0;
+    } else if (!flags->isPadding && tempLength < 2) {
+        jclass lae = env->FindClass("java/lang/IllegalArgumentException");
+        env->ThrowNew(lae, "Data length less than 2, can't be decoded!");
+        return 0;
+    }
+
+    //计算数据尾部的换行符占位数（若存在）
+    int endSpace = 0;
+    if (length == LEN_DEFAULT || (length + offset == realLength)) {
+        if (flags->isCRLF) {
+            if (data[realLength - 2] == '\r')
+                endSpace = 2;
+        } else if (data[realLength - 1] == '\n')
+            endSpace = 1;
+    }
+
+    //计算换行符个数
+    int enters = 0;
+    if (flags->isWrap) {
+        enters = tempLength / (flags->isCRLF ? 78 : 77);
+    }
+
+    tempLength -= endSpace;
+    decodeLength = tempLength;
+
+    int t = tempLength - enters;
+    tempLength = t >= 0 ? t : tempLength;
+    bool isRemainder = false;
+    int equals = 0;//记录'='号个数（若存在）
+    int remainder = 0;//记录余数（若存在）
+
+    /*
+     * 多判断一层，存在padding时，解码数据不足4位且不能被4整除的throw exception，
+     * 不存在padding时，最少解码数据是2位，数据不能被4整除时，若余数为1、2，则数据完整可被解码
+     */
+
+    if (flags->isPadding) {
+        if (tempLength % 4 != 0) {
+            jclass lae = env->FindClass("java/lang/IllegalArgumentException");
+            env->ThrowNew(lae, "Data can't be decoded!!!");
+            return 0;
+        }
+
+        if (data[decodeLength - 2] == '=') {
+            equals = 2;
+            isRemainder = true;
+        }
+        else if (data[decodeLength - 1] == '=') {
+            equals = 1;
+            isRemainder = true;
+        }
+
+    } else {
+        int d = tempLength % 4;
+        if (d > 2) {
+            jclass lae = env->FindClass("java/lang/IllegalArgumentException");
+            env->ThrowNew(lae, "Data can't be decoded!");
+            return 0;
+        } else if (d != 0) {
+            remainder = d;
+            isRemainder = true;
+        }
+    }
+
+    if (isRemainder) {
+        decodeLength -= enters;
+        decodeLength += remainder;
+        decodeLength = decodeLength * DECODE_CONST - 3;
+        decodeLength += (3 - equals);
+    } else {
+        decodeLength -= enters;
+        decodeLength = decodeLength * DECODE_CONST;
+    }
+    return decodeLength;
+}
+
+/**
  * 获取选项值
  */
 Flags *getFlags(int flag) {
@@ -183,6 +274,37 @@ EncodeData *encode(const char *data, int realLength, int offset, int length, int
     return encodeData;
 }
 
+/**
+ * 解码
+ * data       : byte数组
+ * realLength : 数组长度
+ * offset     : 偏移量
+ * length     : 从偏移量开始截取的长度
+ * flag       : 选项
+ */
+DecodeData *decode(JNIEnv *env, const char *data, int realLength, int offset, int length, int flag) {
+
+    DecodeData *decodeData = (DecodeData *) malloc(sizeof(DecodeData));
+    Flags *flags = getFlags(flag);
+    const char *table = flags->isUrlSafe ? DECODE_WEB_TABLE : DECODE_TABLE;
+    char *result, *p;
+
+    int len = realLength;
+    if (length != LEN_DEFAULT)
+        len = length;
+
+    int decodeLength = getDecodeLength(env, data, realLength, offset, length, flags);
+    result = p = (char *) malloc(decodeLength * sizeof(char));
+
+    for (int i = 0; i < len; i += 4) {
+
+    }
+
+    decodeData->data = result;
+    decodeData->length = decodeLength;
+    return decodeData;
+}
+
 JNIEXPORT jbyteArray JNICALL Java_vite_base64_Base64_nativeEncode
         (JNIEnv *env, jclass clazz, jbyteArray byteArray, jint offset, jint length, jint flag) {
     if (isByteArrayNull(env, byteArray))
@@ -226,4 +348,25 @@ JNIEXPORT jstring JNICALL Java_vite_base64_Base64_nativeEncode2String
     jstring str = env->NewStringUTF("utf-8");
 
     return (jstring) env->NewObject(strClass, strInitId, result, str);
+}
+
+JNIEXPORT jbyteArray JNICALL Java_vite_base64_Base64_nativeDecode
+        (JNIEnv *env, jclass clazz, jbyteArray byteArray, jint offset, jint length, jint flag) {
+    if (isByteArrayNull(env, byteArray))
+        return NULL;
+    jbyte *data = env->GetByteArrayElements(byteArray, JNI_FALSE);
+    jint realLen = env->GetArrayLength(byteArray);
+    if (isOutOfRange(env, realLen, offset, length)) {
+        return NULL;
+    }
+
+    DecodeData *decodeData = decode(env, (const char *) data, realLen, offset, length, flag);
+    realLen = decodeData->length;
+
+    env->ReleaseByteArrayElements(byteArray, data, 0);
+
+    jbyteArray result = env->NewByteArray(realLen);
+    env->SetByteArrayRegion(result, 0, realLen, (const jbyte *) decodeData->data);
+    return result;
+    return NULL;
 }

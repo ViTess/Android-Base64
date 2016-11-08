@@ -63,7 +63,21 @@ public class Base64 {
         return nativeEncode2String(data, offset, length, flag);
     }
 
+    public static byte[] decode(byte[] data) {
+        return nativeDecode(data, 0, LEN_DEFAULT, DEFAULT);
+    }
+
+    public static byte[] decode(byte[] data, int flag) {
+        return nativeDecode(data, 0, LEN_DEFAULT, flag);
+    }
+
+    public static byte[] decode(byte[] data, int offset, int length, int flag) {
+        return nativeDecode(data, offset, length, flag);
+    }
+
     private static native byte[] nativeEncode(byte[] data, int offset, int length, int flag);
 
     private static native String nativeEncode2String(byte[] data, int offset, int length, int flag);
+
+    private static native byte[] nativeDecode(byte[] data, int offset, int length, int flag);
 }
