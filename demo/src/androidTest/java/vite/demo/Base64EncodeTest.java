@@ -158,6 +158,11 @@ public class Base64EncodeTest {
                 Assert.assertEquals(Base64.encode2String(key.getBytes(), 2, 9, Base64.DEFAULT),
                         android.util.Base64.encodeToString(key.getBytes(), 2, 9, 0));
 
+                Assert.assertArrayEquals(Base64.encode(key.getBytes(), 6, 2, Base64.DEFAULT),
+                        android.util.Base64.encode(key.getBytes(), 6, 2, 0));
+                Assert.assertEquals(Base64.encode2String(key.getBytes(), 6, 2, Base64.DEFAULT),
+                        android.util.Base64.encodeToString(key.getBytes(), 6, 2, 0));
+
                 Assert.assertArrayEquals(Base64.encode(key.getBytes(), 2, 9, Base64.NO_PADDING),
                         android.util.Base64.encode(key.getBytes(), 2, 9, android.util.Base64.NO_PADDING));
                 Assert.assertEquals(Base64.encode2String(key.getBytes(), 2, 9, Base64.NO_PADDING),
