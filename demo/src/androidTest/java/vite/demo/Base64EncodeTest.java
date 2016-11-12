@@ -273,12 +273,14 @@ public class Base64EncodeTest {
             random.nextBytes(data);
 
             thisTime = System.nanoTime();
-            Base64.encode(data);
+            byte[] result1 = Base64.encode(data);
             time1 += (System.nanoTime() - thisTime);
 
             thisTime = System.nanoTime();
-            android.util.Base64.encode(data, 0);
+            byte[] result2 = android.util.Base64.encode(data, 0);
             time2 += (System.nanoTime() - thisTime);
+
+            Assert.assertArrayEquals(result1, result2);
 
             count--;
         }

@@ -299,7 +299,7 @@ EncodeData *encode(const char *data, int realLength, int offset, int length, int
 /**
  * 另一种方法解码，不预先计算解码长度
  */
-DecodeData *decode(const char *data, int realLength, int offset, int length, int flag) {
+DecodeData *decodeLikeAndroid(const char *data, int realLength, int offset, int length, int flag) {
     DecodeData *decodeData = (DecodeData *) malloc(sizeof(DecodeData));
     bool isUrlSafe = (flag & URL_SAFE);
     const char *table = isUrlSafe ? DECODE_WEB_TABLE : DECODE_TABLE;
@@ -491,7 +491,7 @@ JNIEXPORT jbyteArray JNICALL Java_vite_base64_Base64_nativeDecode
         return NULL;
     }
 
-    DecodeData *decodeData = decode((const char *) data, realLen, offset, length, flag);
+    DecodeData *decodeData = decodeLikeAndroid((const char *) data, realLen, offset, length, flag);
     if (decodeData->length == -1) {
         jclass lae = env->FindClass("java/lang/IllegalArgumentException");
         env->ThrowNew(lae, "Data can't be decoded!");
