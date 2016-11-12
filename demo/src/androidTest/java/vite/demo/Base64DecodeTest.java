@@ -64,18 +64,8 @@ public class Base64DecodeTest {
     }
 
     @Test
-    public void testDecodeOffset() {
-//        Random random = new Random();
-//        byte[] data = new byte[100];
-//        for (int i = 0; i < 10; i++) {
-//            random.nextBytes(data);
-//            Log.v("testDecodeOffset",new String(data));
-//            Assert.assertArrayEquals(Base64.decode(data, 20, 40, Base64.NO_WRAP), android.util.Base64.decode(data, 20, 40, 0));
-//        }
+    public void testDecodePollution(){
         byte[] data = "N\nDUxMzgwN\nj\nQy".getBytes();
-//        Assert.assertArrayEquals(Base64.decode(data, Base64.NO_WRAP), android.util.Base64.decode(data, 0));
-        Log.v("testDec",new String(android.util.Base64.decode(data, 0)));
-//        Log.v("testDec",new String(android.util.Base64.decode("YWJjZA", 0)));
-//        Log.v("testDec",new String(Base64.decode("YWJjZA".getBytes())));
+        Assert.assertArrayEquals(Base64.decode(data), android.util.Base64.decode(data, 0));
     }
 }

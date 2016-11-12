@@ -176,6 +176,17 @@ int getDecodeLength(const char *data, int realLength, int offset, int length, Fl
     return decodeLength;
 }
 
+bool isEqualOrSkip(char c) {
+    if (c == DECODE_EQUALS || c == DECODE_SKIP)
+        return true;
+    return false;
+}
+
+DecodeData *getErrorDecodeData(DecodeData *data) {
+    data->length = DECODE_ERROR;
+    return data;
+}
+
 /**
  * 获取选项值
  */
@@ -226,13 +237,12 @@ EncodeData *encode(const char *data, int realLength, int offset, int length, int
     EncodeData *encodeData = (EncodeData *) malloc(sizeof(EncodeData));
     Flags *flags = getFlags(flag);//根据选项值获取对应选项
     const char *table = flags->isUrlSafe ? ENCODE_WEB_TABLE : ENCODE_TABLE;
-    char *result;//输出结果用指针
     char *p;//活动指针，用于循环取数据
     char temp1, temp2, temp3;//辅助取数
 
     int encodeLength = getEncodeLength(realLength, length, flags);
 
-    result = p = (char *) malloc(encodeLength * sizeof(char));
+    encodeData->data = p = (char *) malloc(encodeLength * sizeof(char));
     int i;
     int count = LINE_GROUPS;
 
@@ -280,71 +290,140 @@ EncodeData *encode(const char *data, int realLength, int offset, int length, int
         *p = '\n';//最后要加结束符号
     }
 
-    encodeData->data = result;
     encodeData->length = encodeLength;
     return encodeData;
 }
 
 /**
- * 解码
- * data       : byte数组
- * realLength : 数组长度
- * offset     : 偏移量
- * length     : 从偏移量开始截取的长度
- * flag       : 选项
+ * 另一种方法解码，不预先计算解码长度
  */
 DecodeData *decode(const char *data, int realLength, int offset, int length, int flag) {
-
     DecodeData *decodeData = (DecodeData *) malloc(sizeof(DecodeData));
-    Flags *flags = getFlags(flag);
-    const char *table = flags->isUrlSafe ? DECODE_WEB_TABLE : DECODE_TABLE;
-    char *result, *p;
+    bool isUrlSafe = (flag & URL_SAFE);
+    const char *table = isUrlSafe ? DECODE_WEB_TABLE : DECODE_TABLE;
     char temp1, temp2, temp3, temp4;//辅助取数
-    char r1, r2, r3;//辅助记录
+    char c, *p;
 
+    int index = offset;
     int len = realLength;
     if (length != LEN_DEFAULT)
         len = length;
+    len += offset;
 
-    int decodeLength = getDecodeLength(data, realLength, offset, length, flags);
-    if (decodeLength < 0) {
-        decodeData->length = decodeLength;
-        return decodeData;
-    }
-    result = p = (char *) malloc(decodeLength * sizeof(char));
+    decodeData->data = p = (char *) malloc(sizeof(char) * len);
+    int decodeLength = 0;
+    int state = 0;//记录状态
 
-    for (int i = offset; i < len; i += 4) {
+    //最后还是用了android源码里的解决方法
+    //因为解码数据中可能存在多种被无效数据（如头文件里解码表中的-1、-2）污染的情况
+    //自己写过2种方法，效果不理想
+    while (index < len) {
+        if (state == 0) {
+            while (index + 4 <= len) {
+                temp1 = table[data[index]];
+                temp2 = table[data[index + 1]];
+                temp3 = table[data[index + 2]];
+                temp4 = table[data[index + 3]];
 
-        temp1 = data[i];
-        if (temp1 == 10) {
-            i++;
-            temp1 = i >= (len + offset) ? 0 : data[i];
+                if (isEqualOrSkip(temp1) || isEqualOrSkip(temp2) || isEqualOrSkip(temp3) || isEqualOrSkip(temp4))
+                    break;
+
+                //第一个解码取第一个字节的第2~8位，第二个字节的第3~4位
+                p[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+                //第二个解码取第二个字节的后4位，第三个字节的第2~6位
+                p[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
+                //第三个解码取第三个字节的后2位，第四个字节的第0~6位
+                p[decodeLength++] = (temp3 << 6) + temp4;
+
+                index += 4;
+            }
+
+            if (index >= len)
+                break;
         }
-        temp2 = i + 1 >= (len + offset) ? 0 : data[i + 1];
-        temp3 = i + 2 >= (len + offset) ? 0 : data[i + 2];
-        temp4 = i + 3 >= (len + offset) ? 0 : data[i + 3];
 
-        temp1 = table[temp1];
-        temp2 = table[temp2];
-        temp3 = table[temp3];
-        temp4 = table[temp4];
+        c = table[data[index++]];
 
-        //第一个解码取第一个字节的第2~8位，第二个字节的第3~4位
-        r1 = (temp1 << 2) + (temp2 >> 4);
-        //第二个解码取第二个字节的后4位，第三个字节的第2~6位
-        r2 = (temp2 << 4) + (temp3 >> 2);
-        //第三个解码取第三个字节的后2位，第四个字节的第0~6位
-        r3 = (temp3 << 6) + temp4;
+        switch (state) {
+            case 0:
+                if (!isEqualOrSkip(c)) {
+                    temp1 = c;
+                    ++state;
+                } else if (c != DECODE_SKIP)
+                    return getErrorDecodeData(decodeData);
+                break;
 
-        if (r1 > 0)
-            *(p++) = r1;
-        if (r2 > 0)
-            *(p++) = r2;
-        if (r3 > 0)
-            *(p++) = r3;
+            case 1:
+                if (!isEqualOrSkip(c)) {
+                    temp2 = c;
+                    ++state;
+                } else if (c != DECODE_SKIP)
+                    return getErrorDecodeData(decodeData);
+                break;
+
+            case 2:
+                if (!isEqualOrSkip(c)) {
+                    temp3 = c;
+                    ++state;
+                } else if (c == DECODE_EQUALS) {
+                    //第一个解码取第一个字节的第2~8位，第二个字节的第3~4位
+                    p[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+                    state = 4;
+                } else if (c != DECODE_SKIP)
+                    return getErrorDecodeData(decodeData);
+                break;
+
+            case 3:
+                if (!isEqualOrSkip(c)) {
+                    temp4 = c;
+
+                    p[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+                    p[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
+                    p[decodeLength++] = (temp3 << 6) + temp4;
+                    state = 0;
+                } else if (c == DECODE_EQUALS) {
+                    p[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+                    p[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
+
+                    state = 5;
+                } else if (c != DECODE_SKIP)
+                    return getErrorDecodeData(decodeData);
+                break;
+
+            case 4:
+                if (c == DECODE_EQUALS) {
+                    ++state;
+                } else if (c != DECODE_SKIP)
+                    return getErrorDecodeData(decodeData);
+                break;
+
+            case 5:
+                if (c != DECODE_SKIP)
+                    return getErrorDecodeData(decodeData);
+                break;
+        }
     }
 
-    decodeData->data = result;
+    //跳出while循环后
+
+    switch (state) {
+        case 0:
+            break;
+        case 1:
+            return getErrorDecodeData(decodeData);
+        case 2:
+            p[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+            break;
+        case 3:
+            p[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+            p[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
+            break;
+        case 4:
+            return getErrorDecodeData(decodeData);
+        case 5:
+            break;
+    }
+
     decodeData->length = decodeLength;
     return decodeData;
 }
@@ -355,9 +434,8 @@ JNIEXPORT jbyteArray JNICALL Java_vite_base64_Base64_nativeEncode
         return NULL;
     jbyte *data = env->GetByteArrayElements(byteArray, JNI_FALSE);
     jint realLen = env->GetArrayLength(byteArray);
-    if (isOutOfRange(env, realLen, offset, length)) {
+    if (isOutOfRange(env, realLen, offset, length))
         return NULL;
-    }
 
     EncodeData *encodeData = encode((char *) data, realLen, offset, length, flag);
     realLen = encodeData->length;
@@ -367,212 +445,6 @@ JNIEXPORT jbyteArray JNICALL Java_vite_base64_Base64_nativeEncode
     jbyteArray result = env->NewByteArray(realLen);
     env->SetByteArrayRegion(result, 0, realLen, (const jbyte *) encodeData->data);
     return result;
-}
-
-/**
- * 另一种方法解码，不预先计算解码长度
- */
-DecodeData *decode2(const char *data, int realLength, int offset, int length, int flag) {
-    DecodeData *decodeData = (DecodeData *) malloc(sizeof(DecodeData));
-    Flags *flags = getFlags(flag);
-    const char *table = flags->isUrlSafe ? DECODE_WEB_TABLE : DECODE_TABLE;
-    char temp1, temp2, temp3, temp4;//辅助取数
-    char r1, r2, r3;//辅助记录
-    char *p;
-
-    int index = offset;
-    int len = realLength;
-    if (length != LEN_DEFAULT)
-        len = length;
-    len += offset;
-
-    decodeData->data = p = (char *) malloc(sizeof(char) * len);
-    int decodeLength = 0;
-    bool isUndefine = false;//辅助判断是否遭遇情况4
-    int undefineCount = 0;
-
-    while (index < len) {
-        //循环去除无效字符，直到数据结尾
-        while (!isUndefine && index + 4 <= len) {
-//            temp1 = data[index];
-//            temp2 = data[index + 1];
-//            temp3 = data[index + 2];
-//            temp4 = data[index + 3];
-
-            temp1 = table[data[index]];
-            temp2 = table[data[index + 1]];
-            temp3 = table[data[index + 2]];
-            temp4 = table[data[index + 3]];
-
-            if (temp1 < 0 || temp2 < 0 || temp3 < 0 || temp4 < 0) {
-                isUndefine = true;
-                break;
-            }
-
-            //第一个解码取第一个字节的第2~8位，第二个字节的第3~4位
-            r1 = (temp1 << 2) + (temp2 >> 4);
-            //第二个解码取第二个字节的后4位，第三个字节的第2~6位
-            r2 = (temp2 << 4) + (temp3 >> 2);
-            //第三个解码取第三个字节的后2位，第四个字节的第0~6位
-            r3 = (temp3 << 6) + temp4;
-
-            if (r1 > 0) {
-                *(p++) = r1;
-                decodeLength++;
-            }
-            if (r2 > 0) {
-                *(p++) = r2;
-                decodeLength++;
-            }
-            if (r3 > 0) {
-                *(p++) = r3;
-                decodeLength++;
-            }
-
-            index += 4;
-        }
-
-        //从上面while循环跳出来的情况有四种
-        //1.正常结束，index==len，此时直接跳出外循环
-        //2.指针后面还有数据，但不足4个，len-index>=1&&len-index<=3
-        //  2.1 剩余1个：判断是否为无效字符，是则正常跳出外循环；为'='，则异常；否则报异常
-        //  2.2 剩余2个：判断是否都为无效字符，是的话则正常；为'=='，则异常;有效字符下，2个字符可解码成一个字符；其余报异常
-        //  2.3 剩余3个：都为有效字符时，直接解码成2个字符；都为无效字符时直接输出；存在'='号下都为异常
-        //      还有排列情况：xx(-1),(-1)xx,x(-1)x，这种情况去掉无效字符，剩余2个字符解码成一个字符
-        //3.存在无效字符，此时index自增再进入循环，直到去除无效字符
-        //4.数据中包含无效字符而跳出来，比如x(-1)xx，x(-1)(-1)xx
-        if (isUndefine) {
-            switch (undefineCount) {
-                case 0:
-                    temp1 = table[data[index]];
-                    if (temp1 >= 0) {
-                        undefineCount++;
-                        index++;
-                        if (index > len) {
-                            //TODO 异常
-                        }
-                    } else if (temp1 == DECODE_EQUALS) {
-                        //TODO 异常
-                    }
-                    break;
-                case 1:
-                    temp2 = table[data[index]];
-                    if (temp2 >= 0) {
-                        undefineCount++;
-                        index++;
-                        if (index > len) {
-                            //TODO 异常
-                        }
-                    } else if (temp2 == DECODE_EQUALS) {
-                        //TODO 异常
-                    }
-                    break;
-                case 2:
-                    temp3 = table[data[index]];
-                    if (temp3 >= 0) {
-                        undefineCount++;
-                        index++;
-                        if (index > len) {
-                            //TODO 异常
-                        }
-                    } else if (temp3 == DECODE_EQUALS) {
-                        //TODO 解码temp1和temp2，然后结束
-                    } else if (temp3 != DECODE_SKIP) {
-                        //TODO 异常
-                    }
-                    //为无效字符时，不处理
-                    break;
-                case 3:
-                    temp4 = table[data[index]];
-                    if (temp4 >= 0) {
-                        //TODO 解码
-
-                        undefineCount = 0;
-                        isUndefine = false;
-                        index++;
-                    } else if (temp4 == DECODE_EQUALS) {
-                        //TODO 解码
-                    } else if (temp4 != DECODE_SKIP) {
-                        //TODO 异常
-                    }
-                    break;
-            }
-        } else {
-            //非undefine出来的
-            switch (len - index) {
-                case 0:
-                    decodeData->length = decodeLength;
-                    return decodeData;
-                case 1:
-                    break;
-                case 2:
-                    break;
-                case 3:
-                    break;
-                default://当做异常
-                    break;
-            }
-        }
-    }
-
-    for (int i = offset; i < len; i += 4) {
-
-        //temp为0则表示到了数据尽头
-        temp1 = data[i];
-        if (temp1 == 10) {
-            i++;
-            temp1 = i >= len ? 0 : data[i];
-        }
-        temp2 = i + 1 >= len ? 0 : data[i + 1];
-        temp3 = i + 2 >= len ? 0 : data[i + 2];
-        temp4 = i + 3 >= len ? 0 : data[i + 3];
-
-//        if (temp1 == 0) {
-//            decodeData->length = -1;
-//            return decodeData;
-//        } else if (temp2 == 0) {
-//        } else if (temp3 == 0) {
-//
-//        } else if (temp4 == 0) {
-//
-//        }
-
-        //table[0]也是0
-        temp1 = table[temp1];
-        temp2 = table[temp2];
-        temp3 = table[temp3];
-        temp4 = table[temp4];
-
-        //第一个解码取第一个字节的第2~8位，第二个字节的第3~4位
-        r1 = (temp1 << 2) + (temp2 >> 4);
-        //第二个解码取第二个字节的后4位，第三个字节的第2~6位
-        r2 = (temp2 << 4) + (temp3 >> 2);
-        //第三个解码取第三个字节的后2位，第四个字节的第0~6位
-        r3 = (temp3 << 6) + temp4;
-
-        if (r1 > 0) {
-            *(p++) = r1;
-            decodeLength++;
-        }
-        if (r2 > 0) {
-            *(p++) = r2;
-            decodeLength++;
-        }
-        if (r3 > 0) {
-            *(p++) = r3;
-            decodeLength++;
-        }
-    }
-    char log[256];
-    sprintf(log, "decodeLength:%d", decodeLength);
-    LOGV(log);
-    sprintf(log, "len:%d", len);
-    LOGV(log);
-    sprintf(log, "offset:%d", offset);
-    LOGV(log);
-
-    decodeData->length = decodeLength;
-    return decodeData;
 }
 
 JNIEXPORT jstring JNICALL Java_vite_base64_Base64_nativeEncode2String
@@ -610,7 +482,7 @@ JNIEXPORT jbyteArray JNICALL Java_vite_base64_Base64_nativeDecode
         return NULL;
     }
 
-    DecodeData *decodeData = decode2((const char *) data, realLen, offset, length, flag);
+    DecodeData *decodeData = decode((const char *) data, realLen, offset, length, flag);
     if (decodeData->length == -1) {
         jclass lae = env->FindClass("java/lang/IllegalArgumentException");
         env->ThrowNew(lae, "Data can't be decoded!");

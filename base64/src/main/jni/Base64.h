@@ -38,6 +38,9 @@ extern "C" {
 #define DECODE_SKIP 255
 #define DECODE_EQUALS 254
 
+/* 解码异常，用length = -1表示 */
+#define DECODE_ERROR -1
+
 #define DECODE_CONST 0.75f
 
 typedef struct {
