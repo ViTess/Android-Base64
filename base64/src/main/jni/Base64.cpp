@@ -290,6 +290,8 @@ EncodeData *encode(const char *data, int realLength, int offset, int length, int
         *p = '\n';//最后要加结束符号
     }
 
+    free(flags);
+
     encodeData->length = encodeLength;
     return encodeData;
 }
@@ -302,7 +304,7 @@ DecodeData *decode(const char *data, int realLength, int offset, int length, int
     bool isUrlSafe = (flag & URL_SAFE);
     const char *table = isUrlSafe ? DECODE_WEB_TABLE : DECODE_TABLE;
     char temp1, temp2, temp3, temp4;//辅助取数
-    char c, *p;
+    char c;
 
     int index = offset;
     int len = realLength;
@@ -310,7 +312,7 @@ DecodeData *decode(const char *data, int realLength, int offset, int length, int
         len = length;
     len += offset;
 
-    decodeData->data = p = (char *) malloc(sizeof(char) * len);
+    decodeData->data = (char *) malloc(sizeof(char) * len);
     int decodeLength = 0;
     int state = 0;//记录状态
 
@@ -329,11 +331,11 @@ DecodeData *decode(const char *data, int realLength, int offset, int length, int
                     break;
 
                 //第一个解码取第一个字节的第2~8位，第二个字节的第3~4位
-                p[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+                decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
                 //第二个解码取第二个字节的后4位，第三个字节的第2~6位
-                p[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
+                decodeData->data[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
                 //第三个解码取第三个字节的后2位，第四个字节的第0~6位
-                p[decodeLength++] = (temp3 << 6) + temp4;
+                decodeData->data[decodeLength++] = (temp3 << 6) + temp4;
 
                 index += 4;
             }
@@ -367,7 +369,7 @@ DecodeData *decode(const char *data, int realLength, int offset, int length, int
                     ++state;
                 } else if (c == DECODE_EQUALS) {
                     //第一个解码取第一个字节的第2~8位，第二个字节的第3~4位
-                    p[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+                    decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
                     state = 4;
                 } else if (c != DECODE_SKIP)
                     return getErrorDecodeData(decodeData);
@@ -377,13 +379,13 @@ DecodeData *decode(const char *data, int realLength, int offset, int length, int
                 if (!isEqualOrSkip(c)) {
                     temp4 = c;
 
-                    p[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
-                    p[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
-                    p[decodeLength++] = (temp3 << 6) + temp4;
+                    decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+                    decodeData->data[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
+                    decodeData->data[decodeLength++] = (temp3 << 6) + temp4;
                     state = 0;
                 } else if (c == DECODE_EQUALS) {
-                    p[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
-                    p[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
+                    decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+                    decodeData->data[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
 
                     state = 5;
                 } else if (c != DECODE_SKIP)
@@ -412,11 +414,11 @@ DecodeData *decode(const char *data, int realLength, int offset, int length, int
         case 1:
             return getErrorDecodeData(decodeData);
         case 2:
-            p[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+            decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
             break;
         case 3:
-            p[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
-            p[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
+            decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+            decodeData->data[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
             break;
         case 4:
             return getErrorDecodeData(decodeData);
@@ -444,6 +446,10 @@ JNIEXPORT jbyteArray JNICALL Java_vite_base64_Base64_nativeEncode
 
     jbyteArray result = env->NewByteArray(realLen);
     env->SetByteArrayRegion(result, 0, realLen, (const jbyte *) encodeData->data);
+
+    free(encodeData->data);
+    free(encodeData);
+
     return result;
 }
 
@@ -464,6 +470,9 @@ JNIEXPORT jstring JNICALL Java_vite_base64_Base64_nativeEncode2String
 
     jbyteArray result = env->NewByteArray(realLen);
     env->SetByteArrayRegion(result, 0, realLen, (const jbyte *) encodeData->data);
+
+    free(encodeData->data);
+    free(encodeData);
 
     jclass strClass = env->FindClass("java/lang/String");
     jmethodID strInitId = env->GetMethodID(strClass, "<init>", "([BLjava/lang/String;)V");
@@ -494,5 +503,9 @@ JNIEXPORT jbyteArray JNICALL Java_vite_base64_Base64_nativeDecode
 
     jbyteArray result = env->NewByteArray(realLen);
     env->SetByteArrayRegion(result, 0, realLen, (const jbyte *) decodeData->data);
+
+    free(decodeData->data);
+    free(decodeData);
+
     return result;
 }
