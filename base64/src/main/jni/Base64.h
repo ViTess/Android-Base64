@@ -77,7 +77,7 @@ static const char ENCODE_WEB_TABLE[] = {
 };
 
 /*解码表*/
-static const char DECODE_TABLE[] = {
+static const int DECODE_TABLE[] = {
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
@@ -97,7 +97,7 @@ static const char DECODE_TABLE[] = {
 };
 
 /*可用于url的解码表*/
-static const char DECODE_WEB_TABLE[] = {
+static const int DECODE_WEB_TABLE[] = {
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1,

@@ -301,9 +301,12 @@ EncodeData *encode(const char *data, int realLength, int offset, int length, int
  */
 DecodeData *decodeLikeAndroid(const char *data, int realLength, int offset, int length, int flag) {
     DecodeData *decodeData = (DecodeData *) malloc(sizeof(DecodeData));
-    bool isUrlSafe = (flag & URL_SAFE);
-    const char *table = isUrlSafe ? DECODE_WEB_TABLE : DECODE_TABLE;
-    char temp1, temp2, temp3, temp4;//辅助取数
+    const int *table;
+    if (flag & URL_SAFE)
+        table = DECODE_WEB_TABLE;
+    else
+        table = DECODE_TABLE;
+    int value;
     char c;
 
     int index = offset;
@@ -321,21 +324,21 @@ DecodeData *decodeLikeAndroid(const char *data, int realLength, int offset, int 
     //自己写过2种方法，效果不理想
     while (index < len) {
         if (state == 0) {
-            while (index + 4 <= len) {
-                temp1 = table[data[index]];
-                temp2 = table[data[index + 1]];
-                temp3 = table[data[index + 2]];
-                temp4 = table[data[index + 3]];
+            while (index + 4 <= len && (value = (table[data[index]] << 18) |
+                                                (table[data[index + 1]] << 12) |
+                                                (table[data[index + 2]] << 6) |
+                                                (table[data[index + 3]])) >= 0) {
 
-                if (isEqualOrSkip(temp1) || isEqualOrSkip(temp2) || isEqualOrSkip(temp3) || isEqualOrSkip(temp4))
-                    break;
+                decodeData->data[decodeLength++] = (value >> 16);
+                decodeData->data[decodeLength++] = (value >> 8);
+                decodeData->data[decodeLength++] = value;
 
-                //第一个解码取第一个字节的第2~8位，第二个字节的第3~4位
-                decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
-                //第二个解码取第二个字节的后4位，第三个字节的第2~6位
-                decodeData->data[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
-                //第三个解码取第三个字节的后2位，第四个字节的第0~6位
-                decodeData->data[decodeLength++] = (temp3 << 6) + temp4;
+//                //第一个解码取第一个字节的第2~8位，第二个字节的第3~4位
+//                decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+//                //第二个解码取第二个字节的后4位，第三个字节的第2~6位
+//                decodeData->data[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
+//                //第三个解码取第三个字节的后2位，第四个字节的第0~6位
+//                decodeData->data[decodeLength++] = (temp3 << 6) + temp4;
 
                 index += 4;
             }
@@ -348,44 +351,45 @@ DecodeData *decodeLikeAndroid(const char *data, int realLength, int offset, int 
 
         switch (state) {
             case 0:
-                if (!isEqualOrSkip(c)) {
-                    temp1 = c;
+                if (c < DECODE_EQUALS) {
+                    value = c;
                     ++state;
                 } else if (c != DECODE_SKIP)
                     return getErrorDecodeData(decodeData);
                 break;
 
             case 1:
-                if (!isEqualOrSkip(c)) {
-                    temp2 = c;
+                if (c < DECODE_EQUALS) {
+                    value = (value << 6) | c;
                     ++state;
                 } else if (c != DECODE_SKIP)
                     return getErrorDecodeData(decodeData);
                 break;
 
             case 2:
-                if (!isEqualOrSkip(c)) {
-                    temp3 = c;
+                if (c < DECODE_EQUALS) {
+                    value = (value << 6) | c;
                     ++state;
                 } else if (c == DECODE_EQUALS) {
-                    //第一个解码取第一个字节的第2~8位，第二个字节的第3~4位
-                    decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+                    decodeData->data[decodeLength++] = (value >> 4);
+//                    //第一个解码取第一个字节的第2~8位，第二个字节的第3~4位
+//                    decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
                     state = 4;
                 } else if (c != DECODE_SKIP)
                     return getErrorDecodeData(decodeData);
                 break;
 
             case 3:
-                if (!isEqualOrSkip(c)) {
-                    temp4 = c;
+                if (c < DECODE_EQUALS) {
+                    value = (value << 6) | c;
 
-                    decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
-                    decodeData->data[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
-                    decodeData->data[decodeLength++] = (temp3 << 6) + temp4;
+                    decodeData->data[decodeLength++] = (value >> 16);
+                    decodeData->data[decodeLength++] = (value >> 8);
+                    decodeData->data[decodeLength++] = value;
                     state = 0;
                 } else if (c == DECODE_EQUALS) {
-                    decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
-                    decodeData->data[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
+                    decodeData->data[decodeLength++] = (value >> 10);
+                    decodeData->data[decodeLength++] = (value >> 2);
 
                     state = 5;
                 } else if (c != DECODE_SKIP)
@@ -414,11 +418,11 @@ DecodeData *decodeLikeAndroid(const char *data, int realLength, int offset, int 
         case 1:
             return getErrorDecodeData(decodeData);
         case 2:
-            decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
+            decodeData->data[decodeLength++] = (value >> 4);
             break;
         case 3:
-            decodeData->data[decodeLength++] = (temp1 << 2) + (temp2 >> 4);
-            decodeData->data[decodeLength++] = (temp2 << 4) + (temp3 >> 2);
+            decodeData->data[decodeLength++] = (value >> 10);
+            decodeData->data[decodeLength++] = (value >> 2);
             break;
         case 4:
             return getErrorDecodeData(decodeData);
