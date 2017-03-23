@@ -1,12 +1,12 @@
-#Android Base64
+# Android Base64
 
-###NDK实现Base64解/编码
+### NDK实现Base64解/编码
 
 demo中有unit test，其中有简单的运行时间统计
 
 >注：所有解码后的数据最后都带'\n'
 
-####Encode
+#### Encode
 
 flag| mean 
 ---|---
@@ -16,13 +16,13 @@ NO_WRAP    | 除结尾外去掉所有换行符
 CRLF       | 设置换行符风格为CRLF(\r\n)
 URL_SAFE   | 设置url可使用的格式，即'\_'换成'-'，'+'和'/'换成'\_'
 
-####Decode
+#### Decode
 
 flag| mean 
 ---|---
 URL_SAFE   | 设置url可使用的格式，即'\_'换成'-'，'+'和'/'换成'\_'
 
-####Update
+#### Update
 
 16.11.12
 
